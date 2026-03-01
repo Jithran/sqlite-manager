@@ -1,0 +1,19 @@
+{
+  "name": "sqlite-manager",
+  "version": "0.1.0",
+  "description": "Browser-based SQLite editor — 100% client-side via File System Access API",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host"
+  },
+  "dependencies": {
+    "@sqlite.org/sqlite-wasm": "^3.46.1-build1",
+    "@tanstack/table-core": "^8.20.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  }
+}

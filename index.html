@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SQLite Manager</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Toolbar -->
+      <header id="toolbar">
+        <div class="toolbar-left">
+          <span class="app-logo">🗄 SQLite Manager</span>
+          <div class="toolbar-divider"></div>
+          <button id="btn-new" class="btn btn-ghost" title="New in-memory database">New</button>
+          <button id="btn-open" class="btn btn-ghost" title="Open .db / .sqlite file">Open</button>
+          <button id="btn-save" class="btn btn-ghost" title="Save to same file (Ctrl+S)" disabled>Save</button>
+          <button id="btn-save-as" class="btn btn-ghost" title="Save as…" disabled>Save As</button>
+        </div>
+        <div class="toolbar-right">
+          <span id="db-filename" class="filename-badge">No file open</span>
+          <span id="db-status" class="status-dot status-idle" title="Not connected"></span>
+        </div>
+      </header>
+
+      <!-- Main layout -->
+      <div id="workspace">
+        <!-- Sidebar: table list -->
+        <aside id="sidebar">
+          <div class="sidebar-header">
+            <span>Tables</span>
+            <button id="btn-refresh-tables" class="btn-icon" title="Refresh table list">↺</button>
+          </div>
+          <ul id="table-list" class="table-list">
+            <li class="table-list-empty">No database open</li>
+          </ul>
+        </aside>
+
+        <!-- Editor + results -->
+        <main id="main-panel">
+          <div id="editor-panel">
+            <textarea
+              id="sql-editor"
+              class="sql-editor"
+              placeholder="-- Write your SQL here&#10;SELECT * FROM sqlite_master;"
+              spellcheck="false"
+            ></textarea>
+            <div class="editor-actions">
+              <button id="btn-run" class="btn btn-primary" title="Run query (Ctrl+Enter)" disabled>
+                ▶ Run
+              </button>
+              <span id="query-info" class="query-info"></span>
+            </div>
+          </div>
+
+          <div id="results-panel">
+            <div id="results-toolbar">
+              <span id="results-count" class="results-count"></span>
+              <button id="btn-export-csv" class="btn btn-ghost btn-sm" style="display:none">Export CSV</button>
+            </div>
+            <div id="results-container">
+              <div id="results-placeholder" class="results-placeholder">
+                Run a query to see results
+              </div>
+              <div id="results-table-wrap" style="display:none">
+                <table id="results-table" class="results-table">
+                  <thead id="results-thead"></thead>
+                  <tbody id="results-tbody"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <!-- Status bar -->
+      <footer id="statusbar">
+        <span id="status-msg">Ready</span>
+        <span id="status-right">SQLite WASM • File System Access API</span>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
