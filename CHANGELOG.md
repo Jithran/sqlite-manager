@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.1.0] – Initial release – 2026-03-02
+
 ### Added
 - **SQL editor**: write and execute SQL queries with Ctrl+Enter shortcut and Tab indentation.
 - **Results table**: query results rendered with TanStack Table, including click-to-sort columns.
