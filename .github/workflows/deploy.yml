@@ -1,0 +1,141 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Tag name, e.g. v1.0.0'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE:    ghcr.io/jithran/sqlite-manager
+
+jobs:
+
+  # ── 1. Maak (of werk bij) de GitHub Release aan ──────────────────
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name:      ${{ steps.vars.outputs.tag_name }}
+      version_clean: ${{ steps.vars.outputs.version_clean }}
+
+    steps:
+      - name: Bepaal tag
+        id: vars
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            tag="${{ github.ref_name }}"
+          else
+            tag="${{ github.event.inputs.version }}"
+          fi
+          echo "tag_name=$tag"          >> "$GITHUB_OUTPUT"
+          echo "version_clean=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+
+      - name: Haal changelog-entry op
+        id: changelog
+        shell: bash
+        run: |
+          version="${{ steps.vars.outputs.version_clean }}"
+          escaped=$(echo "$version" | sed 's/\./\\./g')
+
+          CLFILE="CHANGELOG.md"
+          if [[ -f "$CLFILE" ]]; then
+            heading=$(grep -m1 "^## \[${escaped}\]" "$CLFILE" || true)
+
+            if [[ -n "$heading" ]]; then
+              release_title=$(echo "$heading" | sed "s|^## \[${escaped}\]|v${version}|")
+            else
+              release_title="v${version}"
+            fi
+
+            notes=$(awk "/^## \[${escaped}\]/{flag=1;next} /^## /{flag=0} flag" "$CLFILE" \
+                    | sed '/^[[:space:]]*$/d')
+
+            if [[ -z "$notes" ]]; then
+              notes=$(awk "/^## \[Unreleased\]/{flag=1;next} /^## /{flag=0} flag" "$CLFILE" \
+                      | sed '/^[[:space:]]*$/d')
+              [[ -z "$notes" ]] && notes="Geen changelog-entry gevonden voor v${version}."
+            fi
+          else
+            release_title="v${version}"
+            notes="CHANGELOG.md niet gevonden in de repository root."
+          fi
+
+          echo "release_title=${release_title}" >> "$GITHUB_OUTPUT"
+          {
+            echo "release_notes<<EOF"
+            echo "$notes"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Maak GitHub Release aan (of werk bij)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.vars.outputs.tag_name }}
+          name:     ${{ steps.changelog.outputs.release_title }}
+          body:     ${{ steps.changelog.outputs.release_notes }}
+
+  # ── 2. Bouw en push Docker image ─────────────────────────────────
+  build:
+    name: Build & push Docker image
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inloggen bij GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bouwen en pushen
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ needs.release.outputs.tag_name }}
+            ${{ env.IMAGE }}:latest
+
+  # ── 3. Werk manifest bij in terraform-playground ─────────────────
+  deploy:
+    name: Update manifest in terraform-playground
+    runs-on: ubuntu-latest
+    needs: [release, build]
+
+    steps:
+      - name: Checkout terraform-playground
+        uses: actions/checkout@v4
+        with:
+          repository: Jithran/terraform-playground
+          token: ${{ secrets.TERRAFORM_REPO_PAT }}
+          path: terraform-playground
+
+      - name: Pas image-tag aan in deployment manifest
+        run: |
+          sed -i \
+            "s|image: ghcr.io/jithran/sqlite-manager:.*|image: ghcr.io/jithran/sqlite-manager:${{ needs.release.outputs.tag_name }}|" \
+            terraform-playground/cicd/sqlite-manager/templates/deployment.yaml
+
+      - name: Commit en push
+        working-directory: terraform-playground
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cicd/sqlite-manager/templates/deployment.yaml
+          git commit -m "chore(sqlite-manager): update image naar ${{ needs.release.outputs.tag_name }}"
+          git push
