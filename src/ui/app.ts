@@ -19,6 +19,8 @@ import {
   initSQLite,
   createNewDatabase,
   openFile,
+  openSqlFile,
+  loadDbBuffer,
   saveFile,
   saveAsFile,
   execQuery,
@@ -27,16 +29,18 @@ import {
   isOpen,
   type QueryResult,
 } from '../db/sqlite.ts';
+import { convertMysqlToSqlite } from '../db/mysql-compat.ts';
 
 // ── Element refs ──────────────────────────────────────────────────────────────
 
 const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
-const btnNew      = el<HTMLButtonElement>('btn-new');
-const btnOpen     = el<HTMLButtonElement>('btn-open');
-const btnSave     = el<HTMLButtonElement>('btn-save');
-const btnSaveAs   = el<HTMLButtonElement>('btn-save-as');
+const btnNew       = el<HTMLButtonElement>('btn-new');
+const btnOpen      = el<HTMLButtonElement>('btn-open');
+const btnImportSql = el<HTMLButtonElement>('btn-import-sql');
+const btnSave      = el<HTMLButtonElement>('btn-save');
+const btnSaveAs    = el<HTMLButtonElement>('btn-save-as');
 const btnRun      = el<HTMLButtonElement>('btn-run');
 const btnRefresh  = el<HTMLButtonElement>('btn-refresh-tables');
 const btnExportCsv = el<HTMLButtonElement>('btn-export-csv');
@@ -54,6 +58,7 @@ const resultsPlaceholder = el('results-placeholder');
 const resultsTableWrap   = el('results-table-wrap');
 const resultsThead       = el('results-thead');
 const resultsTbody       = el('results-tbody');
+const dropOverlay        = el('drop-overlay');
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -351,6 +356,43 @@ async function handleOpen(): Promise<void> {
   }
 }
 
+/** Execute a SQL script (converting MySQL syntax if needed) and update the UI. */
+function importSql(name: string, rawSql: string): void {
+  if (!isOpen()) {
+    createNewDatabase();
+    setFilename('(new database)');
+  }
+
+  const sql = convertMysqlToSqlite(rawSql);
+  const t0 = performance.now();
+  execQuery(sql);
+  const elapsed = (performance.now() - t0).toFixed(1);
+
+  sqlEditor.value = sql;
+  resultsPlaceholder.style.display = 'flex';
+  resultsTableWrap.style.display = 'none';
+  resultsCount.textContent = '';
+  btnExportCsv.style.display = 'none';
+  queryInfo.textContent = `Done in ${elapsed} ms`;
+  refreshTableList();
+  setStatus(`Imported: ${name} (${elapsed} ms)`);
+}
+
+async function handleImportSql(): Promise<void> {
+  try {
+    setStatus('Selecting SQL file…', 'loading');
+    const { name, sql } = await openSqlFile();
+    setStatus(`Running ${name}…`, 'loading');
+    importSql(name, sql);
+  } catch (err) {
+    if ((err as DOMException)?.name === 'AbortError') {
+      setStatus('Import cancelled', 'idle');
+    } else {
+      setStatus(`Import failed: ${String(err)}`, 'error');
+    }
+  }
+}
+
 async function handleSave(): Promise<void> {
   try {
     setStatus('Saving…', 'loading');
@@ -408,6 +450,79 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ── Drag-and-drop ─────────────────────────────────────────────────────────────
+
+const DB_EXTENSIONS = new Set(['.db', '.sqlite', '.sqlite3', '.db3']);
+
+function droppedFileExtension(filename: string): string {
+  const dot = filename.lastIndexOf('.');
+  return dot >= 0 ? filename.slice(dot).toLowerCase() : '';
+}
+
+function handleDroppedDb(name: string, data: Uint8Array): void {
+  try {
+    loadDbBuffer(data); // also clears the file handle
+    setFilename(name);
+    refreshTableList();
+    const tables = listTables();
+    if (tables.length > 0) {
+      sqlEditor.value = `SELECT * FROM "${tables[0]}" LIMIT 100;`;
+      runQuery();
+    }
+    setStatus(`Opened: ${name}`);
+  } catch (err) {
+    setStatus(`Open failed: ${String(err)}`, 'error');
+  }
+}
+
+function handleDroppedSql(name: string, sql: string): void {
+  try {
+    importSql(name, sql);
+  } catch (err) {
+    setStatus(`Import failed: ${String(err)}`, 'error');
+  }
+}
+
+function initDragAndDrop(): void {
+  let dragDepth = 0;
+
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragDepth++;
+    dropOverlay.classList.add('visible');
+  });
+
+  document.addEventListener('dragleave', () => {
+    dragDepth--;
+    if (dragDepth === 0) dropOverlay.classList.remove('visible');
+  });
+
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    dropOverlay.classList.remove('visible');
+
+    const file = e.dataTransfer?.files[0];
+    if (!file) return;
+
+    const ext = droppedFileExtension(file.name);
+
+    if (ext === '.sql') {
+      const sql = await file.text();
+      handleDroppedSql(file.name, sql);
+    } else if (DB_EXTENSIONS.has(ext)) {
+      const buffer = await file.arrayBuffer();
+      handleDroppedDb(file.name, new Uint8Array(buffer));
+    } else {
+      setStatus(`Unsupported file type: ${file.name}`, 'error');
+    }
+  });
+}
+
 // ── Initialise ────────────────────────────────────────────────────────────────
 
 export async function initApp(): Promise<void> {
@@ -420,9 +535,13 @@ export async function initApp(): Promise<void> {
     return;
   }
 
+  // Wire up drag-and-drop
+  initDragAndDrop();
+
   // Wire up events
   btnNew.addEventListener('click', handleNew);
   btnOpen.addEventListener('click', handleOpen);
+  btnImportSql.addEventListener('click', handleImportSql);
   btnSave.addEventListener('click', handleSave);
   btnSaveAs.addEventListener('click', handleSaveAs);
   btnRun.addEventListener('click', runQuery);

@@ -7,6 +7,13 @@
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗄️</text></svg>" />
   </head>
   <body>
+    <div id="drop-overlay">
+      <div class="drop-message">
+        <span class="drop-icon">⬇</span>
+        <span>Drop .db or .sql file</span>
+      </div>
+    </div>
+
     <div id="app">
       <!-- Toolbar -->
       <header id="toolbar">
@@ -15,6 +22,7 @@
           <div class="toolbar-divider"></div>
           <button id="btn-new" class="btn btn-ghost" title="New in-memory database">New</button>
           <button id="btn-open" class="btn btn-ghost" title="Open .db / .sqlite file">Open</button>
+          <button id="btn-import-sql" class="btn btn-ghost" title="Import and run a .sql script">Import SQL</button>
           <button id="btn-save" class="btn btn-ghost" title="Save to same file (Ctrl+S)" disabled>Save</button>
           <button id="btn-save-as" class="btn btn-ghost" title="Save as…" disabled>Save As</button>
         </div>

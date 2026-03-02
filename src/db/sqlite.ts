@@ -71,7 +71,12 @@ export function createNewDatabase(): void {
   fileHandle = null;
 }
 
-/** Deserialise a raw SQLite file buffer into an in-memory database. */
+/** Deserialise a raw SQLite file buffer into an in-memory database (no file handle). */
+export function loadDbBuffer(data: Uint8Array): void {
+  fileHandle = null;
+  loadFromBuffer(data);
+}
+
 function loadFromBuffer(data: Uint8Array): void {
   closeCurrentDb();
   db = new sqlite3!.oo1.DB(':memory:');
@@ -107,6 +112,13 @@ const FILE_PICKER_TYPES = [
   },
 ];
 
+const SQL_FILE_PICKER_TYPES = [
+  {
+    description: 'SQL Script',
+    accept: { 'text/plain': ['.sql'] },
+  },
+];
+
 /** Prompt the user to pick a .db file, load it, and return the filename. */
 export async function openFile(): Promise<string> {
   const [handle] = await (
@@ -120,6 +132,19 @@ export async function openFile(): Promise<string> {
   const buffer = await file.arrayBuffer();
   loadFromBuffer(new Uint8Array(buffer));
   return file.name;
+}
+
+/** Prompt the user to pick a .sql file and return its name and contents. */
+export async function openSqlFile(): Promise<{ name: string; sql: string }> {
+  const [handle] = await (
+    window as unknown as {
+      showOpenFilePicker(opts: object): Promise<FileSystemFileHandle[]>;
+    }
+  ).showOpenFilePicker({ types: SQL_FILE_PICKER_TYPES, multiple: false });
+
+  const file = await handle.getFile();
+  const sql = await file.text();
+  return { name: file.name, sql };
 }
 
 /** Serialise the current in-memory database to bytes. */
