@@ -19,6 +19,8 @@ import {
   initSQLite,
   createNewDatabase,
   openFile,
+  getRow,
+  getLastInsertRowid,
   openSqlFile,
   loadDbBuffer,
   saveFile,
@@ -34,6 +36,14 @@ import {
 } from '../db/sqlite.ts';
 import { convertMysqlToSqlite } from '../db/mysql-compat.ts';
 import { showReleases } from './changelog.ts';
+import {
+  recordUpdate,
+  recordDelete,
+  recordInsert,
+  undoLast,
+  getHistoryCount,
+  showChangeHistory,
+} from './changeHistory.ts';
 
 // ── Element refs ──────────────────────────────────────────────────────────────
 
@@ -41,6 +51,7 @@ const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
 const btnReleases       = el<HTMLButtonElement>('btn-releases');
+const btnHistory        = el<HTMLButtonElement>('btn-history');
 const btnNew            = el<HTMLButtonElement>('btn-new');
 const btnOpen           = el<HTMLButtonElement>('btn-open');
 const btnImportSql      = el<HTMLButtonElement>('btn-import-sql');
@@ -150,6 +161,18 @@ function clearSelection(): void {
   lastClickedVisualIndex = null;
 }
 
+function updateHistoryBtn(): void {
+  const n = getHistoryCount();
+  btnHistory.textContent = n > 0 ? `History (${n})` : 'History';
+  btnHistory.classList.toggle('btn-history-active', n > 0);
+}
+
+function afterUndo(tableName: string): void {
+  if (currentTableName === tableName) refreshCurrentTable();
+  setStatus('Change undone', 'ok');
+  updateHistoryBtn();
+}
+
 function cancelPendingRow(): void {
   pendingNewRow = null;
   document.getElementById('pending-new-row')?.remove();
@@ -169,6 +192,9 @@ function commitPendingRow(): void {
 
   try {
     insertRow(currentTableName, cols, values);
+    const newRowid = getLastInsertRowid();
+    recordInsert(currentTableName, newRowid, cols, values);
+    updateHistoryBtn();
     pendingNewRow = null;
     setStatus('Row inserted', 'ok');
     refreshCurrentTable();
@@ -557,6 +583,8 @@ function startCellEdit(
 
     try {
       updateCell(currentTableName!, rowid, colName, newVal);
+      recordUpdate(currentTableName!, rowid, colName, currentVal ?? null, newVal);
+      updateHistoryBtn();
       setStatus(`Updated "${colName}"`, 'ok');
       refreshCurrentTable();
     } catch (err) {
@@ -585,8 +613,13 @@ function handleDeleteSelected(): void {
   try {
     for (const idx of selectedRowIndices) {
       const rowid = currentRowids[idx];
-      if (rowid != null) deleteRow(currentTableName, rowid);
+      if (rowid != null) {
+        const rowData = getRow(currentTableName, rowid);
+        deleteRow(currentTableName, rowid);
+        if (rowData) recordDelete(currentTableName, rowid, rowData.columns, rowData.values);
+      }
     }
+    updateHistoryBtn();
     setStatus(`Deleted ${count} row${count !== 1 ? 's' : ''}`, 'ok');
     clearSelection();
     refreshCurrentTable();
@@ -815,6 +848,20 @@ document.addEventListener('keydown', (e) => {
       return;
     }
   }
+  // Ctrl+Z — undo last change
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea') {
+      e.preventDefault();
+      try {
+        const tableName = undoLast();
+        if (tableName !== null) afterUndo(tableName);
+      } catch (err) {
+        setStatus(`Undo failed: ${String(err)}`, 'error');
+      }
+      return;
+    }
+  }
   // Save
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault();
@@ -914,6 +961,7 @@ export async function initApp(): Promise<void> {
   initDragAndDrop();
 
   btnReleases.addEventListener('click', showReleases);
+  btnHistory.addEventListener('click', () => showChangeHistory(afterUndo));
   btnNew.addEventListener('click', handleNew);
   btnOpen.addEventListener('click', handleOpen);
   btnImportSql.addEventListener('click', handleImportSql);

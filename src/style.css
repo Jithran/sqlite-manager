@@ -517,6 +517,15 @@ body {
 .btn-pending-cancel:hover { background: rgba(248,81,73,0.45); }
 
 /* ── Danger ghost button ──────────────────────────────────── */
+/* History button — highlights when there are unsaved changes */
+.btn-history-active {
+  color: var(--warning) !important;
+  border-color: var(--warning) !important;
+}
+.btn-history-active:hover {
+  background: rgba(210, 153, 34, 0.12) !important;
+}
+
 .btn-danger-ghost {
   color: var(--danger) !important;
   border-color: var(--danger) !important;
@@ -651,6 +660,83 @@ body {
   padding: 1px 4px;
   border-radius: 3px;
   color: var(--accent);
+}
+
+/* ── Change history modal ─────────────────────────────────── */
+.history-empty {
+  padding: 24px 0;
+  text-align: center;
+  color: var(--text-2);
+  font-style: italic;
+  font-size: 12px;
+}
+
+.history-list { display: flex; flex-direction: column; }
+
+.history-entry {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  row-gap: 2px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.history-entry:last-child { border-bottom: none; }
+
+.history-icon {
+  grid-column: 1;
+  grid-row: 1;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.5;
+}
+.history-update .history-icon { color: var(--accent); }
+.history-delete .history-icon { color: var(--danger); }
+.history-insert .history-icon { color: var(--success); }
+
+.history-main {
+  grid-column: 2;
+  grid-row: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.history-desc {
+  font-size: 12px;
+  color: var(--text-0);
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-time {
+  font-size: 10px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.history-undo-btn {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+}
+
+.history-detail {
+  grid-column: 2 / 4;
+  grid-row: 2;
+  font-size: 11px;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── Scrollbars ───────────────────────────────────────────── */

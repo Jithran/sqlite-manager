@@ -213,6 +213,38 @@ export function execQuery(sql: string): QueryResult {
   return { columns, rows };
 }
 
+/** Fetch a single row by rowid; returns null if not found. */
+export function getRow(
+  tableName: string,
+  rowid: number,
+): { columns: string[]; values: unknown[] } | null {
+  if (!db) return null;
+  const safeTable = tableName.replace(/"/g, '""');
+  const columns: string[] = [];
+  const rows: unknown[][] = [];
+  db.exec({
+    sql: `SELECT * FROM "${safeTable}" WHERE rowid = ?`,
+    bind: [rowid],
+    columnNames: columns,
+    resultRows: rows,
+  });
+  return rows.length > 0 ? { columns, values: rows[0] } : null;
+}
+
+/** Return the rowid assigned by the most recent INSERT. */
+export function getLastInsertRowid(): number {
+  if (!db) throw new Error('No database open');
+  const rows: unknown[][] = [];
+  db.exec({ sql: 'SELECT last_insert_rowid()', resultRows: rows });
+  return (rows[0]?.[0] as number) ?? 0;
+}
+
+/** Execute a parameterised statement that returns no rows. */
+export function execBound(sql: string, bind: unknown[]): void {
+  if (!db) throw new Error('No database open');
+  db.exec({ sql, bind });
+}
+
 /** Update a single cell identified by rowid. */
 export function updateCell(
   tableName: string,
