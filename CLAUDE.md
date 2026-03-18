@@ -44,9 +44,9 @@ When asked to create a new release, follow these steps exactly — no additional
 
 1. **Determine the next version** from the last versioned section in `CHANGELOG.md` (e.g. `0.1.0` → `0.2.0` for features, `0.1.0` → `0.1.1` for fixes only).
 2. **Update `CHANGELOG.md`**: replace the `## [Unreleased]` block with a new versioned section `## [X.Y.Z] – Short description – YYYY-MM-DD`, then leave an empty `## [Unreleased]` block above it for future entries.
-3. **Commit**: `-chore: release vX.Y.Z`
-4. **Tag and push**: `git tag vX.Y.Z && git push origin vX.Y.Z`
-5. **Do not create the GitHub Release manually** — GitHub Actions picks up the tag and creates the release automatically, builds the Docker image (`ghcr.io/jithran/sqlite-manager`), and updates the manifest in terraform-playground. No release body text is needed.
+3. **Commit and push**: `-chore: release vX.Y.Z`
+4. **Create the GitHub Release**: `gh release create vX.Y.Z --title "vX.Y.Z" --target main` — do not set notes or a body; GitHub Actions adds the title and description automatically. Do NOT push the tag separately; `gh release create` creates the tag as part of the release.
+5. GitHub Actions then builds the Docker image (`ghcr.io/jithran/sqlite-manager`) and updates the manifest in terraform-playground.
 
 ---
 
