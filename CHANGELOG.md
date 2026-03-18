@@ -20,6 +20,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 - **Add row constraint errors**: "+ Add Row" no longer immediately fires `INSERT … DEFAULT VALUES` (which failed on NOT NULL columns without defaults); it now shows a pending row the user fills in before any SQL is executed.
+- **MySQL import: CHECK constraint errors**: `CHECK (json_valid(...))` and other CHECK constraints are now stripped during MySQL→SQLite conversion — MySQL historically does not enforce CHECK constraints and dump data may not comply.
+- **MySQL import: nested transaction error**: a `ROLLBACK` is issued before running an import script, clearing any transaction left open by a previous failed import.
 
 ---
 

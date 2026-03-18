@@ -805,6 +805,11 @@ function importSql(name: string, rawSql: string): void {
   }
 
   const sql = convertMysqlToSqlite(rawSql);
+
+  // Roll back any dangling transaction left by a previous failed import
+  // so that the BEGIN inside the SQL file can start cleanly.
+  try { execQuery('ROLLBACK'); } catch { /* not in a transaction — ok */ }
+
   const t0 = performance.now();
   execQuery(sql);
   const elapsed = (performance.now() - t0).toFixed(1);

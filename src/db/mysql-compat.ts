@@ -32,6 +32,11 @@ export function convertMysqlToSqlite(sql: string): string {
   // 4. Backtick identifiers → double-quoted (SQLite standard)
   out = out.replace(/`([^`]*)`/g, '"$1"');
 
+  // 5a. Strip CHECK constraints — MySQL historically doesn't enforce them and
+  //     the data may not comply (e.g. json_valid() fails on backslash-escaped strings).
+  //     Handles one level of nesting: CHECK (fn(col)) or CHECK (col > 0).
+  out = out.replace(/\s+CHECK\s*\((?:[^()]*|\([^()]*\))*\)/gi, '');
+
   // 5. Strip MySQL-specific column / field attributes
   out = out.replace(/\bAUTO_INCREMENT\b/gi, '');
   out = out.replace(/\bUNSIGNED\b/gi, '');
