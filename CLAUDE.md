@@ -6,13 +6,25 @@ These rules apply to every change made to this project.
 
 ## 0. Git & GitHub
 
-- **Language**: all git commits and GitHub communication must be in **English**.
-- **Commit style**: follow the existing `-type: short description` format. Examples: `-add: ...`, `-fix: ...`, `-mod: ...`, `-chore: ...`. No Conventional Commits format, no capital first letter, no period at the end.
+- **Language**: all git commits and GitHub communication (issue comments, PR descriptions, release notes) must be in **English**.
+- **Commit style**: follow the existing `-type: short description` format. Examples: `-add: ...`, `-fix: ...`, `-mod: ...`, `-chore: ...`. Never deviate from this style (no Conventional Commits format, no capital first letter, no period at the end).
 - **No co-authorship**: do not add `Co-Authored-By` or any AI attribution to commits.
+- **Closing issues**: when closing a GitHub issue, always add a closing comment with the following structure:
+  1. `Implemented in commit <hash>.` (first line)
+  2. `## What was done` — a description of what was implemented; include any information useful to end users (behaviour details, limitations, configuration if any).
+  3. `## Release` — state which release the change is included in, with a link to the release tag and to `CHANGELOG.md`. If no release has been made yet, write "Changes are included in the upcoming release."
 
 ---
 
-## 1. Changelog
+## 1. Language
+
+- All UI text must be in **English**: labels, button text, placeholder text, confirmation dialogs, empty states, error messages — everything visible to the user.
+- Variable names, comments, and code stay in English.
+- This rule applies even when the user gives instructions in Dutch — always write UI text in English.
+
+---
+
+## 2. Changelog
 
 **REQUIRED after every change — no exceptions, no need to ask.**
 
@@ -20,12 +32,13 @@ These rules apply to every change made to this project.
 - Update `CHANGELOG.md` as the **last step of every task**, before considering the task done.
 - New entries always go under the `## [Unreleased]` section at the top.
 - Use the appropriate subsection: `### Added` for new features, `### Changed` for behaviour changes, `### Fixed` for bug fixes, `### Removed` for removed functionality.
+- Each subsection heading (`### Added`, `### Fixed`, etc.) must appear **at most once** in the `[Unreleased]` block. Always append to an existing subsection rather than creating a duplicate heading.
 - Write entries in English, concise and user-facing (describe what changed, not how).
 - Do not create a new versioned section — that happens at release time via CI/CD.
 
 ---
 
-## 2. Releases
+## 3. Releases
 
 1. Update `CHANGELOG.md`: move `[Unreleased]` entries under a new `## [X.Y.Z] – Description – YYYY-MM-DD` section.
 2. Commit: `-chore: release vX.Y.Z`
@@ -34,7 +47,7 @@ These rules apply to every change made to this project.
 
 ---
 
-## 3. Architecture
+## 4. Architecture
 
 - **100% client-side** — no backend, no server-side code. All SQLite operations run in the browser via `@sqlite.org/sqlite-wasm`.
 - **No framework** — vanilla TypeScript only.
@@ -46,13 +59,22 @@ These rules apply to every change made to this project.
 
 ---
 
-## 4. CSS
+## 5. README
+
+- After **adding a new feature**: add it to the Features section in `README.md` with a short description.
+- After **removing a feature**: remove it from the Features section.
+- After **significantly changing how something works**: update its description if it no longer reflects reality.
+- Do not document internal implementation details — `README.md` is for users, not contributors.
+
+---
+
+## 6. CSS
 
 Use the existing CSS variables defined in `:root` (`--bg-0` through `--bg-3`, `--text-0` through `--text-2`, `--accent`, `--danger`, `--success`, `--border`, `--radius`, `--font-mono`, `--font-ui`). Do not hardcode colours.
 
 ---
 
-## 5. SQLite WASM requirements
+## 7. SQLite WASM requirements
 
 The app requires `SharedArrayBuffer`, which needs cross-origin isolation headers:
 - `Cross-Origin-Opener-Policy: same-origin`
