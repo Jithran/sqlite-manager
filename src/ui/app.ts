@@ -33,12 +33,14 @@ import {
   type QueryResult,
 } from '../db/sqlite.ts';
 import { convertMysqlToSqlite } from '../db/mysql-compat.ts';
+import { showReleases } from './changelog.ts';
 
 // ── Element refs ──────────────────────────────────────────────────────────────
 
 const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
+const btnReleases       = el<HTMLButtonElement>('btn-releases');
 const btnNew            = el<HTMLButtonElement>('btn-new');
 const btnOpen           = el<HTMLButtonElement>('btn-open');
 const btnImportSql      = el<HTMLButtonElement>('btn-import-sql');
@@ -911,6 +913,7 @@ export async function initApp(): Promise<void> {
 
   initDragAndDrop();
 
+  btnReleases.addEventListener('click', showReleases);
   btnNew.addEventListener('click', handleNew);
   btnOpen.addEventListener('click', handleOpen);
   btnImportSql.addEventListener('click', handleImportSql);
