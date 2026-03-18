@@ -40,10 +40,13 @@ These rules apply to every change made to this project.
 
 ## 3. Releases
 
-1. Update `CHANGELOG.md`: move `[Unreleased]` entries under a new `## [X.Y.Z] – Description – YYYY-MM-DD` section.
-2. Commit: `-chore: release vX.Y.Z`
-3. Tag: `git tag vX.Y.Z && git push origin vX.Y.Z`
-4. GitHub Actions automatically creates the GitHub Release, builds the Docker image (`ghcr.io/jithran/sqlite-manager`), and updates the manifest in terraform-playground.
+When asked to create a new release, follow these steps exactly — no additional confirmation needed:
+
+1. **Determine the next version** from the last versioned section in `CHANGELOG.md` (e.g. `0.1.0` → `0.2.0` for features, `0.1.0` → `0.1.1` for fixes only).
+2. **Update `CHANGELOG.md`**: replace the `## [Unreleased]` block with a new versioned section `## [X.Y.Z] – Short description – YYYY-MM-DD`, then leave an empty `## [Unreleased]` block above it for future entries.
+3. **Commit**: `-chore: release vX.Y.Z`
+4. **Tag and push**: `git tag vX.Y.Z && git push origin vX.Y.Z`
+5. **Do not create the GitHub Release manually** — GitHub Actions picks up the tag and creates the release automatically, builds the Docker image (`ghcr.io/jithran/sqlite-manager`), and updates the manifest in terraform-playground. No release body text is needed.
 
 ---
 

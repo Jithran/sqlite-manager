@@ -7,12 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] – Row editing, change history & SQL export – 2026-03-18
+
 ### Added
 - **Row editing**: double-click any cell in a table view to edit it inline; press Enter to save or Escape to cancel. NULL values show an empty input with a NULL placeholder; typing `NULL` saves a SQL NULL. BLOB cells are read-only.
 - **Add row**: click "+ Add Row" in the results toolbar to append a blank editable row; Tab through fields, Enter (or ✓) to insert, Escape (or ✕) to cancel. The INSERT only runs on confirmation, preventing premature constraint errors.
 - **Delete rows**: click the selection column (leftmost) to select rows — Click for single, Shift+click for range, Ctrl+click to toggle individual rows — then press Delete or click "Delete N rows" to remove them with a confirmation prompt.
 - **Releases page**: click "Releases" in the footer to view the full version history parsed from `CHANGELOG.md`; versions are shown as collapsible sections.
-- **Change history**: every cell edit, row insert, and row delete is recorded in an in-session change log. Click "History (N)" in the footer to review changes and undo any entry individually. Ctrl+Z undoes the most recent change.
+- **Change history**: every cell edit, row insert, and row delete is recorded in an in-session change log. Click "History (N)" in the toolbar to review changes and undo any entry individually. Ctrl+Z undoes the most recent change.
 - **Export SQL**: click "Export SQL" in the toolbar to save the current database as a portable `.sql` dump — includes all `CREATE` statements and `INSERT` rows, wrapped in a transaction.
 
 ### Changed
