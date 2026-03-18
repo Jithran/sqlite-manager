@@ -7,6 +7,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- **Row editing**: double-click any cell in a table view to edit it inline; press Enter to save or Escape to cancel. NULL values show an empty input with a NULL placeholder; typing `NULL` saves a SQL NULL. BLOB cells are read-only.
+- **Add row**: click "+ Add Row" in the results toolbar to append a blank editable row; Tab through fields, Enter (or ✓) to insert, Escape (or ✕) to cancel. The INSERT only runs on confirmation, preventing premature constraint errors.
+- **Delete rows**: click the selection column (leftmost) to select rows — Click for single, Shift+click for range, Ctrl+click to toggle individual rows — then press Delete or click "Delete N rows" to remove them with a confirmation prompt.
+
+### Changed
+- **Row selection column**: replaced the per-row × delete button (far right) with a narrow selection column on the left, keeping it accessible regardless of how many columns a table has.
+
+### Fixed
+- **Add row constraint errors**: "+ Add Row" no longer immediately fires `INSERT … DEFAULT VALUES` (which failed on NOT NULL columns without defaults); it now shows a pending row the user fills in before any SQL is executed.
+
 ---
 
 ## [0.1.0] – Initial release – 2026-03-02

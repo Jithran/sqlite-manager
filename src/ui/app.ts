@@ -27,6 +27,9 @@ import {
   listTables,
   hasFileHandle,
   isOpen,
+  updateCell,
+  deleteRow,
+  insertRow,
   type QueryResult,
 } from '../db/sqlite.ts';
 import { convertMysqlToSqlite } from '../db/mysql-compat.ts';
@@ -36,14 +39,16 @@ import { convertMysqlToSqlite } from '../db/mysql-compat.ts';
 const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
-const btnNew       = el<HTMLButtonElement>('btn-new');
-const btnOpen      = el<HTMLButtonElement>('btn-open');
-const btnImportSql = el<HTMLButtonElement>('btn-import-sql');
-const btnSave      = el<HTMLButtonElement>('btn-save');
-const btnSaveAs    = el<HTMLButtonElement>('btn-save-as');
-const btnRun      = el<HTMLButtonElement>('btn-run');
-const btnRefresh  = el<HTMLButtonElement>('btn-refresh-tables');
-const btnExportCsv = el<HTMLButtonElement>('btn-export-csv');
+const btnNew            = el<HTMLButtonElement>('btn-new');
+const btnOpen           = el<HTMLButtonElement>('btn-open');
+const btnImportSql      = el<HTMLButtonElement>('btn-import-sql');
+const btnSave           = el<HTMLButtonElement>('btn-save');
+const btnSaveAs         = el<HTMLButtonElement>('btn-save-as');
+const btnRun            = el<HTMLButtonElement>('btn-run');
+const btnRefresh        = el<HTMLButtonElement>('btn-refresh-tables');
+const btnExportCsv      = el<HTMLButtonElement>('btn-export-csv');
+const btnAddRow         = el<HTMLButtonElement>('btn-add-row');
+const btnDeleteSelected = el<HTMLButtonElement>('btn-delete-selected');
 
 const sqlEditor     = el<HTMLTextAreaElement>('sql-editor');
 const tableList     = el<HTMLUListElement>('table-list');
@@ -98,16 +103,20 @@ function refreshTableList(): void {
     li.textContent = name;
     li.title = `SELECT * FROM "${name}"`;
     li.addEventListener('click', () => {
-      // Highlight active
-      tableList.querySelectorAll('.table-list-item').forEach((el) =>
-        el.classList.remove('active'),
+      tableList.querySelectorAll('.table-list-item').forEach((e) =>
+        e.classList.remove('active'),
       );
       li.classList.add('active');
-      sqlEditor.value = `SELECT * FROM "${name}";`;
-      runQuery();
+      loadTable(name);
     });
     tableList.appendChild(li);
   }
+}
+
+/** Load a table in edit-capable mode (includes hidden rowid column). */
+function loadTable(name: string): void {
+  sqlEditor.value = `SELECT rowid AS __rowid__, * FROM "${name}" LIMIT 500;`;
+  runQuery(name);
 }
 
 // ── TanStack Table renderer ───────────────────────────────────────────────────
@@ -115,7 +124,182 @@ function refreshTableList(): void {
 type Row = Record<string, unknown>;
 
 let currentResult: QueryResult | null = null;
+let currentTableName: string | null = null;
+let currentRowids: number[] = [];
 let sortingState: SortingState = [];
+
+// ── Row selection state ───────────────────────────────────────────────────────
+
+/**
+ * Pending new row: column values the user is filling in before committing.
+ * Null means no pending row.
+ */
+let pendingNewRow: Record<string, string> | null = null;
+
+/** Set of original-data row indices that are currently selected. */
+let selectedRowIndices = new Set<number>();
+/** Visual row index of the last click (for shift-range selection). */
+let lastClickedVisualIndex: number | null = null;
+/** Maps visual position → original data index, rebuilt on each render. */
+let currentVisualRowDataIndices: number[] = [];
+
+function clearSelection(): void {
+  selectedRowIndices.clear();
+  lastClickedVisualIndex = null;
+}
+
+function cancelPendingRow(): void {
+  pendingNewRow = null;
+  document.getElementById('pending-new-row')?.remove();
+  updateEditToolbar();
+}
+
+function commitPendingRow(): void {
+  if (!currentTableName || !pendingNewRow || !currentResult) return;
+
+  const cols = currentResult.columns;
+  const values: (string | number | null)[] = cols.map((col) => {
+    const raw = pendingNewRow![col] ?? '';
+    if (raw === '' || raw.toUpperCase() === 'NULL') return null;
+    if (raw.trim() !== '' && !isNaN(Number(raw))) return Number(raw);
+    return raw;
+  });
+
+  try {
+    insertRow(currentTableName, cols, values);
+    pendingNewRow = null;
+    setStatus('Row inserted', 'ok');
+    refreshCurrentTable();
+  } catch (err) {
+    setStatus(`Insert failed: ${String(err)}`, 'error');
+    // Keep pending row visible so user can fix values
+  }
+}
+
+function renderPendingRow(): void {
+  if (!pendingNewRow || !currentResult) return;
+
+  document.getElementById('pending-new-row')?.remove();
+
+  const tr = document.createElement('tr');
+  tr.id = 'pending-new-row';
+  tr.className = 'row-pending-new';
+
+  // Action cell (save / cancel)
+  const actionTd = document.createElement('td');
+  actionTd.className = 'selection-cell pending-actions';
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn-pending btn-pending-save';
+  saveBtn.textContent = '✓';
+  saveBtn.title = 'Save row (Enter)';
+  saveBtn.addEventListener('mousedown', (e) => { e.preventDefault(); commitPendingRow(); });
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn-pending btn-pending-cancel';
+  cancelBtn.textContent = '✕';
+  cancelBtn.title = 'Cancel (Escape)';
+  cancelBtn.addEventListener('mousedown', (e) => { e.preventDefault(); cancelPendingRow(); });
+
+  actionTd.appendChild(saveBtn);
+  actionTd.appendChild(cancelBtn);
+  tr.appendChild(actionTd);
+
+  const inputs: HTMLInputElement[] = [];
+  for (const col of currentResult.columns) {
+    const td = document.createElement('td');
+    td.className = 'td-pending-cell';
+
+    const input = document.createElement('input');
+    input.className = 'cell-edit-input';
+    input.placeholder = 'NULL';
+    input.value = pendingNewRow[col] ?? '';
+    input.addEventListener('input', () => { pendingNewRow![col] = input.value; });
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commitPendingRow(); return; }
+      if (e.key === 'Escape') { e.preventDefault(); cancelPendingRow(); return; }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const i = inputs.indexOf(input);
+        const next = inputs[i + (e.shiftKey ? -1 : 1)];
+        if (next) next.focus();
+        else if (!e.shiftKey) commitPendingRow();
+      }
+    });
+    inputs.push(input);
+    td.appendChild(input);
+    tr.appendChild(td);
+  }
+
+  resultsTbody.appendChild(tr);
+  if (inputs[0]) inputs[0].focus();
+  setStatus('Fill in values • Enter to save • Escape to cancel', 'idle');
+}
+
+/** Update the "Delete N rows" button without re-rendering the table. */
+function updateSelectionToolbar(): void {
+  const count = selectedRowIndices.size;
+  if (count > 0 && currentTableName) {
+    btnDeleteSelected.style.display = 'inline-flex';
+    btnDeleteSelected.textContent = `Delete ${count} row${count !== 1 ? 's' : ''}`;
+  } else {
+    btnDeleteSelected.style.display = 'none';
+  }
+}
+
+function updateEditToolbar(): void {
+  const editing = currentTableName !== null;
+  btnAddRow.style.display = (editing && !pendingNewRow) ? 'inline-flex' : 'none';
+  updateSelectionToolbar();
+}
+
+/**
+ * Repaint only the selection-related DOM (row highlights + column indicators)
+ * without rebuilding the entire table via TanStack.
+ */
+function repaintSelectionDOM(): void {
+  const rows = resultsTbody.querySelectorAll('tr:not(#pending-new-row)');
+  const total = currentVisualRowDataIndices.length;
+
+  rows.forEach((tr, vIdx) => {
+    const dIdx = currentVisualRowDataIndices[vIdx];
+    const sel = selectedRowIndices.has(dIdx);
+    tr.classList.toggle('row-selected', sel);
+    const cell = tr.querySelector<HTMLElement>('.selection-cell');
+    if (cell) cell.dataset['selected'] = sel ? '1' : '0';
+  });
+
+  const headerCell = resultsThead.querySelector<HTMLElement>('.selection-col-header');
+  if (headerCell) {
+    const allSel = total > 0 && currentVisualRowDataIndices.every((i) => selectedRowIndices.has(i));
+    headerCell.dataset['selected'] = allSel ? '1' : '0';
+    headerCell.title = allSel ? 'Deselect all' : 'Select all';
+  }
+
+  updateSelectionToolbar();
+}
+
+function handleRowSelectionClick(visualIdx: number, dataIdx: number, e: MouseEvent): void {
+  if (e.shiftKey && lastClickedVisualIndex !== null) {
+    const lo = Math.min(lastClickedVisualIndex, visualIdx);
+    const hi = Math.max(lastClickedVisualIndex, visualIdx);
+    if (!e.ctrlKey && !e.metaKey) selectedRowIndices.clear();
+    for (let v = lo; v <= hi; v++) selectedRowIndices.add(currentVisualRowDataIndices[v]);
+  } else if (e.ctrlKey || e.metaKey) {
+    if (selectedRowIndices.has(dataIdx)) selectedRowIndices.delete(dataIdx);
+    else selectedRowIndices.add(dataIdx);
+  } else {
+    if (selectedRowIndices.size === 1 && selectedRowIndices.has(dataIdx)) {
+      selectedRowIndices.clear();
+    } else {
+      selectedRowIndices.clear();
+      selectedRowIndices.add(dataIdx);
+    }
+  }
+  lastClickedVisualIndex = visualIdx;
+  repaintSelectionDOM();
+}
 
 function buildColumnDefs(columns: string[]): ColumnDef<Row>[] {
   return columns.map((col) => ({
@@ -132,9 +316,24 @@ function rowsToObjects(columns: string[], rows: unknown[][]): Row[] {
   );
 }
 
-function renderResults(result: QueryResult): void {
-  currentResult = result;
+function renderResults(result: QueryResult, tableContext: string | null = null): void {
+  pendingNewRow = null;
+  clearSelection();
+
+  if (tableContext !== null && result.columns[0] === '__rowid__') {
+    currentTableName = tableContext;
+    currentRowids = result.rows.map((r) => r[0] as number);
+    currentResult = {
+      columns: result.columns.slice(1),
+      rows: result.rows.map((r) => r.slice(1)),
+    };
+  } else {
+    currentTableName = null;
+    currentRowids = [];
+    currentResult = result;
+  }
   sortingState = [];
+  updateEditToolbar();
   buildTable();
 }
 
@@ -142,14 +341,9 @@ function renderResults(result: QueryResult): void {
  * Create a new TanStack Table instance for the current result set.
  *
  * Key pattern for vanilla-JS TanStack Table v8:
- *   1. Create the table WITHOUT a `state` option so we can read `table.initialState`,
- *      which contains fully-initialised defaults for every feature (columnPinning,
- *      columnSizing, etc.).  Providing only `{ sorting: [] }` omits those fields and
- *      causes "Cannot read properties of undefined (reading 'left')" when the column-
- *      pinning feature tries to access `state.columnPinning.left`.
+ *   1. Create the table WITHOUT a `state` option so we can read `table.initialState`.
  *   2. Merge `table.initialState` with our sorting preference via `setOptions`.
- *   3. Keep the table instance alive so sorting clicks only re-render the DOM,
- *      not the entire table.
+ *   3. Keep the table instance alive so sorting clicks only re-render the DOM.
  */
 function buildTable(): void {
   if (!currentResult) return;
@@ -161,21 +355,16 @@ function buildTable(): void {
   const data = rowsToObjects(columns, rows);
   const columnDefs = buildColumnDefs(columns);
 
-  // Step 1 — create with a temporary empty state so we can read `table.initialState`.
-  // TanStack Table does not call getState() during createTable itself, so this
-  // placeholder is safe.  We replace it in step 2 before any rendering happens.
   const table = createTable<Row>({
     data,
     columns: columnDefs,
-    state: {} as TableState,      // placeholder — replaced immediately below
-    onStateChange() {},           // placeholder — replaced immediately below
+    state: {} as TableState,
+    onStateChange() {},
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     renderFallbackValue: null,
   });
 
-  // Step 2 — build a complete state from the table's own initialState (all
-  // feature defaults present) then override just our sorting preference.
   let tableState: TableState = { ...table.initialState, sorting: sortingState };
 
   table.setOptions((prev) => ({
@@ -185,13 +374,12 @@ function buildTable(): void {
       tableState =
         typeof updater === 'function' ? updater(tableState) : updater;
       sortingState = tableState.sorting ?? [];
-      // Update state on the existing instance — no new table needed
       table.setOptions((o) => ({ ...o, state: tableState }));
+      pendingNewRow = null;
       renderTableDOM(table, rows.length, columns.length);
     },
   }));
 
-  // Step 3 — initial DOM render
   renderTableDOM(table, rows.length, columns.length);
 }
 
@@ -200,14 +388,35 @@ function renderTableDOM(
   rowCount: number,
   colCount: number,
 ): void {
+  const editMode = currentTableName !== null;
+  const modelRows = table.getRowModel().rows;
+
+  currentVisualRowDataIndices = modelRows.map((r) => r.index);
+
   // ── thead
   resultsThead.innerHTML = '';
   for (const headerGroup of table.getHeaderGroups()) {
     const tr = document.createElement('tr');
+
+    if (editMode) {
+      const th = document.createElement('th');
+      th.className = 'selection-col-header';
+      const allSel = modelRows.length > 0 && modelRows.every((r) => selectedRowIndices.has(r.index));
+      th.dataset['selected'] = allSel ? '1' : '0';
+      th.title = allSel ? 'Deselect all' : 'Select all';
+      th.addEventListener('click', () => {
+        const nowAll = modelRows.every((r) => selectedRowIndices.has(r.index));
+        if (nowAll) selectedRowIndices.clear();
+        else modelRows.forEach((r) => selectedRowIndices.add(r.index));
+        lastClickedVisualIndex = null;
+        repaintSelectionDOM();
+      });
+      tr.appendChild(th);
+    }
+
     for (const header of headerGroup.headers) {
       const th = document.createElement('th');
       th.textContent = String(header.column.columnDef.header ?? header.id);
-
       if (header.column.getCanSort()) {
         const arrow = document.createElement('span');
         arrow.className = 'sort-arrow';
@@ -224,8 +433,23 @@ function renderTableDOM(
 
   // ── tbody
   resultsTbody.innerHTML = '';
-  for (const row of table.getRowModel().rows) {
+  for (let vIdx = 0; vIdx < modelRows.length; vIdx++) {
+    const row = modelRows[vIdx];
+    const isSelected = selectedRowIndices.has(row.index);
     const tr = document.createElement('tr');
+    if (isSelected) tr.classList.add('row-selected');
+
+    if (editMode) {
+      const td = document.createElement('td');
+      td.className = 'selection-cell';
+      td.dataset['selected'] = isSelected ? '1' : '0';
+      td.title = 'Click to select • Shift+click for range • Ctrl+click to toggle';
+      const capturedVIdx = vIdx;
+      const capturedDIdx = row.index;
+      td.addEventListener('click', (e) => handleRowSelectionClick(capturedVIdx, capturedDIdx, e));
+      tr.appendChild(td);
+    }
+
     for (const cell of row.getVisibleCells()) {
       const td = document.createElement('td');
       const val = cell.getValue();
@@ -242,15 +466,145 @@ function renderTableDOM(
       } else {
         td.textContent = String(val);
       }
+
+      if (editMode && !(val instanceof Uint8Array)) {
+        td.classList.add('editable-cell');
+        const rowIndex = row.index;
+        const colId = cell.column.id;
+        td.addEventListener('dblclick', () => startCellEdit(td, rowIndex, colId, val));
+      }
+
       tr.appendChild(td);
     }
+
     resultsTbody.appendChild(tr);
   }
 
-  // ── counters
   resultsCount.textContent =
     `${rowCount} row${rowCount !== 1 ? 's' : ''} • ${colCount} column${colCount !== 1 ? 's' : ''}`;
   btnExportCsv.style.display = rowCount > 0 ? 'inline-flex' : 'none';
+  updateSelectionToolbar();
+}
+
+// ── Inline cell editing ───────────────────────────────────────────────────────
+
+function startCellEdit(
+  td: HTMLTableCellElement,
+  rowIndex: number,
+  colName: string,
+  currentVal: unknown,
+): void {
+  if (!currentTableName) return;
+
+  const rowid = currentRowids[rowIndex];
+  if (rowid == null) return;
+
+  const originalText = td.textContent ?? '';
+  const originalClass = td.className;
+  const isNull = currentVal === null || currentVal === undefined;
+
+  const input = document.createElement('input');
+  input.className = 'cell-edit-input';
+  input.value = isNull ? '' : String(currentVal);
+  if (isNull) input.placeholder = 'NULL';
+
+  td.textContent = '';
+  td.className = 'td-editing';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+
+  function restore(): void {
+    if (done) return;
+    done = true;
+    td.textContent = originalText;
+    td.className = originalClass;
+  }
+
+  function commit(): void {
+    if (done) return;
+    done = true;
+
+    const raw = input.value;
+    let newVal: string | number | null;
+
+    if (raw.toUpperCase() === 'NULL') {
+      newVal = null;
+    } else if (raw === '' && isNull) {
+      td.textContent = originalText;
+      td.className = originalClass;
+      return;
+    } else if (raw !== '' && raw.trim() !== '' && !isNaN(Number(raw))) {
+      newVal = Number(raw);
+    } else {
+      newVal = raw;
+    }
+
+    const originalNorm = isNull
+      ? null
+      : typeof currentVal === 'number'
+        ? currentVal
+        : String(currentVal);
+    if (newVal === originalNorm) {
+      td.textContent = originalText;
+      td.className = originalClass;
+      return;
+    }
+
+    try {
+      updateCell(currentTableName!, rowid, colName, newVal);
+      setStatus(`Updated "${colName}"`, 'ok');
+      refreshCurrentTable();
+    } catch (err) {
+      setStatus(`Update failed: ${String(err)}`, 'error');
+      td.textContent = originalText;
+      td.className = originalClass;
+    }
+  }
+
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); restore(); }
+  });
+
+  input.addEventListener('blur', () => setTimeout(() => commit(), 120));
+}
+
+// ── Row delete / insert ───────────────────────────────────────────────────────
+
+function handleDeleteSelected(): void {
+  if (!currentTableName || selectedRowIndices.size === 0) return;
+  const count = selectedRowIndices.size;
+  if (!window.confirm(`Delete ${count} row${count !== 1 ? 's' : ''}?`)) return;
+
+  try {
+    for (const idx of selectedRowIndices) {
+      const rowid = currentRowids[idx];
+      if (rowid != null) deleteRow(currentTableName, rowid);
+    }
+    setStatus(`Deleted ${count} row${count !== 1 ? 's' : ''}`, 'ok');
+    clearSelection();
+    refreshCurrentTable();
+  } catch (err) {
+    setStatus(`Delete failed: ${String(err)}`, 'error');
+  }
+}
+
+function handleAddRow(): void {
+  if (!currentTableName || !currentResult || pendingNewRow) return;
+  pendingNewRow = Object.fromEntries(currentResult.columns.map((c) => [c, '']));
+  updateEditToolbar();
+  renderPendingRow();
+}
+
+function refreshCurrentTable(): void {
+  const name = currentTableName;
+  if (!name) return;
+  sqlEditor.value = `SELECT rowid AS __rowid__, * FROM "${name}" LIMIT 500;`;
+  runQuery(name);
 }
 
 function showError(err: unknown): void {
@@ -265,9 +619,14 @@ function showError(err: unknown): void {
 
 // ── Query runner ──────────────────────────────────────────────────────────────
 
-function runQuery(): void {
+function runQuery(tableContext: string | null = null): void {
   const sql = sqlEditor.value.trim();
   if (!sql) return;
+
+  currentTableName = null;
+  currentRowids = [];
+  pendingNewRow = null;
+  clearSelection();
 
   const t0 = performance.now();
   try {
@@ -275,20 +634,21 @@ function runQuery(): void {
     const elapsed = (performance.now() - t0).toFixed(1);
 
     if (result.columns.length > 0) {
-      renderResults(result);
+      renderResults(result, tableContext);
       queryInfo.textContent = `${result.rows.length} rows in ${elapsed} ms`;
       setStatus(`Query OK — ${result.rows.length} rows (${elapsed} ms)`);
     } else {
-      // DML / DDL — no result set
       resultsPlaceholder.style.display = 'flex';
       resultsTableWrap.style.display = 'none';
       resultsCount.textContent = '';
       btnExportCsv.style.display = 'none';
+      updateEditToolbar();
       queryInfo.textContent = `Done in ${elapsed} ms`;
       setStatus(`Query OK (${elapsed} ms)`);
-      refreshTableList(); // DDL may have changed the schema
+      refreshTableList();
     }
   } catch (err) {
+    updateEditToolbar();
     queryInfo.textContent = '';
     showError(err);
   }
@@ -323,6 +683,10 @@ function exportCsv(): void {
 
 async function handleNew(): Promise<void> {
   createNewDatabase();
+  currentTableName = null;
+  currentRowids = [];
+  pendingNewRow = null;
+  clearSelection();
   setFilename('(new database)');
   refreshTableList();
   sqlEditor.value = '';
@@ -331,6 +695,7 @@ async function handleNew(): Promise<void> {
   currentResult = null;
   resultsCount.textContent = '';
   btnExportCsv.style.display = 'none';
+  updateEditToolbar();
   setStatus('New in-memory database created');
 }
 
@@ -341,11 +706,11 @@ async function handleOpen(): Promise<void> {
     setFilename(name);
     refreshTableList();
     setStatus(`Opened: ${name}`);
-    // Auto-preview the first table
     const tables = listTables();
     if (tables.length > 0) {
-      sqlEditor.value = `SELECT * FROM "${tables[0]}" LIMIT 100;`;
-      runQuery();
+      const firstItem = tableList.querySelector<HTMLElement>('.table-list-item');
+      if (firstItem) firstItem.classList.add('active');
+      loadTable(tables[0]);
     }
   } catch (err) {
     if ((err as DOMException)?.name === 'AbortError') {
@@ -426,13 +791,11 @@ async function handleSaveAs(): Promise<void> {
 // ── Keyboard shortcuts ────────────────────────────────────────────────────────
 
 function handleEditorKeydown(e: KeyboardEvent): void {
-  // Ctrl+Enter / Cmd+Enter → run
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault();
     runQuery();
     return;
   }
-  // Tab → insert spaces instead of losing focus
   if (e.key === 'Tab') {
     e.preventDefault();
     const { selectionStart: start, selectionEnd: end } = sqlEditor;
@@ -441,6 +804,16 @@ function handleEditorKeydown(e: KeyboardEvent): void {
 }
 
 document.addEventListener('keydown', (e) => {
+  // Delete selected rows
+  if (e.key === 'Delete' && currentTableName && selectedRowIndices.size > 0) {
+    const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea') {
+      e.preventDefault();
+      handleDeleteSelected();
+      return;
+    }
+  }
+  // Save
   if ((e.ctrlKey || e.metaKey) && e.key === 's') {
     e.preventDefault();
     if (!btnSave.disabled) {
@@ -461,13 +834,14 @@ function droppedFileExtension(filename: string): string {
 
 function handleDroppedDb(name: string, data: Uint8Array): void {
   try {
-    loadDbBuffer(data); // also clears the file handle
+    loadDbBuffer(data);
     setFilename(name);
     refreshTableList();
     const tables = listTables();
     if (tables.length > 0) {
-      sqlEditor.value = `SELECT * FROM "${tables[0]}" LIMIT 100;`;
-      runQuery();
+      const firstItem = tableList.querySelector<HTMLElement>('.table-list-item');
+      if (firstItem) firstItem.classList.add('active');
+      loadTable(tables[0]);
     }
     setStatus(`Opened: ${name}`);
   } catch (err) {
@@ -535,23 +909,23 @@ export async function initApp(): Promise<void> {
     return;
   }
 
-  // Wire up drag-and-drop
   initDragAndDrop();
 
-  // Wire up events
   btnNew.addEventListener('click', handleNew);
   btnOpen.addEventListener('click', handleOpen);
   btnImportSql.addEventListener('click', handleImportSql);
   btnSave.addEventListener('click', handleSave);
   btnSaveAs.addEventListener('click', handleSaveAs);
-  btnRun.addEventListener('click', runQuery);
+  btnRun.addEventListener('click', () => runQuery());
   btnRefresh.addEventListener('click', refreshTableList);
   btnExportCsv.addEventListener('click', exportCsv);
+  btnAddRow.addEventListener('click', handleAddRow);
+  btnDeleteSelected.addEventListener('click', handleDeleteSelected);
   sqlEditor.addEventListener('keydown', handleEditorKeydown);
 
-  // Start with a blank in-memory DB so the editor is immediately usable
   createNewDatabase();
   setFilename('(new database)');
   refreshTableList();
+  updateEditToolbar();
   setStatus('Ready — SQLite WASM loaded');
 }

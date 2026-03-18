@@ -410,6 +410,107 @@ body {
 
 .drop-icon { font-size: 44px; }
 
+/* ── Inline cell editing ──────────────────────────────────── */
+.editable-cell { cursor: text; }
+.editable-cell:hover { outline: 1px solid var(--accent-muted); }
+
+.td-editing {
+  padding: 0 !important;
+  outline: 2px solid var(--accent) !important;
+}
+
+.cell-edit-input {
+  width: 100%;
+  height: 100%;
+  min-height: 27px;
+  padding: 4px 8px;
+  background: var(--bg-0);
+  color: var(--text-0);
+  border: none;
+  outline: none;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  box-sizing: border-box;
+}
+.cell-edit-input::placeholder { color: var(--text-2); font-style: italic; }
+
+/* ── Row selection column ─────────────────────────────────── */
+.selection-col-header,
+.selection-cell {
+  width: 28px;
+  min-width: 28px;
+  max-width: 28px;
+  padding: 0 !important;
+  text-align: center;
+  border-right: 2px solid var(--border) !important;
+  cursor: pointer;
+  user-select: none;
+}
+
+.selection-col-header::after,
+.selection-cell::after {
+  content: '○';
+  font-size: 10px;
+  color: var(--text-2);
+  display: block;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.selection-col-header[data-selected='1']::after,
+.selection-cell[data-selected='1']::after {
+  content: '●';
+  color: var(--accent);
+}
+.selection-col-header:hover::after,
+.selection-cell:hover::after { color: var(--accent); }
+
+.results-table tr.row-selected td {
+  background: var(--accent-muted) !important;
+}
+
+/* ── Pending new row ──────────────────────────────────────── */
+.row-pending-new td {
+  background: rgba(88, 166, 255, 0.07) !important;
+  border-bottom: 1px dashed var(--accent) !important;
+}
+
+.td-pending-cell { padding: 0 !important; }
+
+.pending-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 0 !important;
+}
+.pending-actions::after { display: none; }
+
+.btn-pending {
+  display: block;
+  width: 22px;
+  height: 13px;
+  font-size: 9px;
+  line-height: 1;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  padding: 0;
+}
+.btn-pending-save   { background: rgba(63,185,80,0.25);  color: var(--success); }
+.btn-pending-cancel { background: rgba(248,81,73,0.25); color: var(--danger);  }
+.btn-pending-save:hover   { background: rgba(63,185,80,0.45); }
+.btn-pending-cancel:hover { background: rgba(248,81,73,0.45); }
+
+/* ── Danger ghost button ──────────────────────────────────── */
+.btn-danger-ghost {
+  color: var(--danger) !important;
+  border-color: var(--danger) !important;
+}
+.btn-danger-ghost:hover {
+  background: rgba(248, 81, 73, 0.12) !important;
+}
+
 /* ── Scrollbars ───────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-1); }

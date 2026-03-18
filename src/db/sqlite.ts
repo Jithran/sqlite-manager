@@ -37,6 +37,7 @@ interface Oo1DB {
     sql: string;
     columnNames?: string[];
     resultRows?: unknown[][];
+    bind?: unknown[];
   }): void;
   close(): void;
 }
@@ -210,6 +211,48 @@ export function execQuery(sql: string): QueryResult {
   db.exec({ sql, columnNames: columns, resultRows: rows });
 
   return { columns, rows };
+}
+
+/** Update a single cell identified by rowid. */
+export function updateCell(
+  tableName: string,
+  rowid: number,
+  colName: string,
+  value: string | number | null,
+): void {
+  if (!db) throw new Error('No database open');
+  const safeTable = tableName.replace(/"/g, '""');
+  const safeCol = colName.replace(/"/g, '""');
+  db.exec({
+    sql: `UPDATE "${safeTable}" SET "${safeCol}" = ? WHERE rowid = ?`,
+    bind: [value, rowid],
+  });
+}
+
+/** Delete a row identified by rowid. */
+export function deleteRow(tableName: string, rowid: number): void {
+  if (!db) throw new Error('No database open');
+  const safeTable = tableName.replace(/"/g, '""');
+  db.exec({
+    sql: `DELETE FROM "${safeTable}" WHERE rowid = ?`,
+    bind: [rowid],
+  });
+}
+
+/** Insert a row with explicit column values (NULL where value is null). */
+export function insertRow(
+  tableName: string,
+  columns: string[],
+  values: (string | number | null)[],
+): void {
+  if (!db) throw new Error('No database open');
+  const safeTable = tableName.replace(/"/g, '""');
+  const cols = columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
+  const placeholders = columns.map(() => '?').join(', ');
+  db.exec({
+    sql: `INSERT INTO "${safeTable}" (${cols}) VALUES (${placeholders})`,
+    bind: values,
+  });
 }
 
 /** Return all user table names in the current database. */
