@@ -245,6 +245,65 @@ export function execBound(sql: string, bind: unknown[]): void {
   db.exec({ sql, bind });
 }
 
+// ── SQL dump ──────────────────────────────────────────────────────────────────
+
+function sqlLiteral(v: unknown): string {
+  if (v === null || v === undefined) return 'NULL';
+  if (typeof v === 'number' || typeof v === 'bigint') return String(v);
+  if (v instanceof Uint8Array) {
+    const hex = Array.from(v).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return `X'${hex}'`;
+  }
+  return `'${String(v).replace(/'/g, "''")}'`;
+}
+
+/**
+ * Generate a full SQL dump of the current database:
+ * all CREATE statements from sqlite_master followed by
+ * INSERT statements for every row in every table.
+ */
+export function exportAsSql(): string {
+  if (!db) throw new Error('No database open');
+
+  const lines: string[] = [
+    '-- SQLite Manager export',
+    `-- ${new Date().toISOString()}`,
+    '',
+    'PRAGMA foreign_keys=OFF;',
+    'BEGIN TRANSACTION;',
+    '',
+  ];
+
+  // Schema: tables first, then indexes / views / triggers
+  const schema = execQuery(
+    `SELECT type, name, sql FROM sqlite_master
+     WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%'
+     ORDER BY CASE type WHEN 'table' THEN 0 WHEN 'index' THEN 1 ELSE 2 END, name`,
+  );
+
+  const tableNames: string[] = [];
+  for (const row of schema.rows) {
+    const [type, name, sql] = row;
+    if (type === 'table') tableNames.push(name as string);
+    lines.push(`${String(sql)};`);
+  }
+
+  // Data
+  for (const tableName of tableNames) {
+    const safe = tableName.replace(/"/g, '""');
+    const data = execQuery(`SELECT * FROM "${safe}"`);
+    if (data.rows.length === 0) continue;
+    lines.push('');
+    const cols = data.columns.map((c) => `"${c.replace(/"/g, '""')}"`).join(', ');
+    for (const row of data.rows) {
+      lines.push(`INSERT INTO "${safe}" (${cols}) VALUES (${row.map(sqlLiteral).join(', ')});`);
+    }
+  }
+
+  lines.push('', 'COMMIT;', '');
+  return lines.join('\n');
+}
+
 /** Update a single cell identified by rowid. */
 export function updateCell(
   tableName: string,

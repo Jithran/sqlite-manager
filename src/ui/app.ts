@@ -25,6 +25,7 @@ import {
   loadDbBuffer,
   saveFile,
   saveAsFile,
+  exportAsSql,
   execQuery,
   listTables,
   hasFileHandle,
@@ -57,6 +58,7 @@ const btnOpen           = el<HTMLButtonElement>('btn-open');
 const btnImportSql      = el<HTMLButtonElement>('btn-import-sql');
 const btnSave           = el<HTMLButtonElement>('btn-save');
 const btnSaveAs         = el<HTMLButtonElement>('btn-save-as');
+const btnExportSql      = el<HTMLButtonElement>('btn-export-sql');
 const btnRun            = el<HTMLButtonElement>('btn-run');
 const btnRefresh        = el<HTMLButtonElement>('btn-refresh-tables');
 const btnExportCsv      = el<HTMLButtonElement>('btn-export-csv');
@@ -91,9 +93,10 @@ function setStatus(msg: string, kind: StatusKind = 'ok'): void {
 function setFilename(name: string | null): void {
   dbFilename.textContent = name ?? 'No file open';
   const hasDb = isOpen();
-  btnSave.disabled   = !hasDb;
-  btnSaveAs.disabled = !hasDb;
-  btnRun.disabled    = !hasDb;
+  btnSave.disabled      = !hasDb;
+  btnSaveAs.disabled    = !hasDb;
+  btnExportSql.disabled = !hasDb;
+  btnRun.disabled       = !hasDb;
 }
 
 // ── Table sidebar ─────────────────────────────────────────────────────────────
@@ -714,6 +717,44 @@ function exportCsv(): void {
   URL.revokeObjectURL(a.href);
 }
 
+// ── SQL dump export ───────────────────────────────────────────────────────────
+
+async function handleExportSql(): Promise<void> {
+  try {
+    const sql = exportAsSql();
+    const blob = new Blob([sql], { type: 'text/plain' });
+
+    if ('showSaveFilePicker' in window) {
+      const handle = await (
+        window as unknown as {
+          showSaveFilePicker(opts: object): Promise<FileSystemFileHandle>;
+        }
+      ).showSaveFilePicker({
+        suggestedName: 'database.sql',
+        types: [{ description: 'SQL Script', accept: { 'text/plain': ['.sql'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      setStatus(`Exported: ${(await handle.getFile()).name}`);
+    } else {
+      // Fallback for browsers without File System Access API
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'database.sql';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      setStatus('SQL dump downloaded');
+    }
+  } catch (err) {
+    if ((err as DOMException)?.name === 'AbortError') {
+      setStatus('Export cancelled', 'idle');
+    } else {
+      setStatus(`Export failed: ${String(err)}`, 'error');
+    }
+  }
+}
+
 // ── Toolbar handlers ──────────────────────────────────────────────────────────
 
 async function handleNew(): Promise<void> {
@@ -967,6 +1008,7 @@ export async function initApp(): Promise<void> {
   btnImportSql.addEventListener('click', handleImportSql);
   btnSave.addEventListener('click', handleSave);
   btnSaveAs.addEventListener('click', handleSaveAs);
+  btnExportSql.addEventListener('click', handleExportSql);
   btnRun.addEventListener('click', () => runQuery());
   btnRefresh.addEventListener('click', refreshTableList);
   btnExportCsv.addEventListener('click', exportCsv);

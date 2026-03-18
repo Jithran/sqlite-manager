@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Delete rows**: click the selection column (leftmost) to select rows — Click for single, Shift+click for range, Ctrl+click to toggle individual rows — then press Delete or click "Delete N rows" to remove them with a confirmation prompt.
 - **Releases page**: click "Releases" in the footer to view the full version history parsed from `CHANGELOG.md`; versions are shown as collapsible sections.
 - **Change history**: every cell edit, row insert, and row delete is recorded in an in-session change log. Click "History (N)" in the footer to review changes and undo any entry individually. Ctrl+Z undoes the most recent change.
+- **Export SQL**: click "Export SQL" in the toolbar to save the current database as a portable `.sql` dump — includes all `CREATE` statements and `INSERT` rows, wrapped in a transaction.
 
 ### Changed
 - **Row selection column**: replaced the per-row × delete button (far right) with a narrow selection column on the left, keeping it accessible regardless of how many columns a table has.
