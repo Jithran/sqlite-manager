@@ -346,6 +346,55 @@ export function insertRow(
   });
 }
 
+// ── Table statistics ──────────────────────────────────────────────────────────
+
+export interface TableStat {
+  name: string;
+  type: 'table' | 'view';
+  rows: number;
+  columns: number;
+  sizeBytes: number;
+}
+
+/** Return statistics for every user table and view in the database. */
+export function getTableStats(): TableStat[] {
+  if (!db) return [];
+
+  const objects = execQuery(
+    `SELECT name, type FROM sqlite_master
+     WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%'
+     ORDER BY type, name`,
+  );
+
+  return objects.rows.map(([name, type]) => {
+    const tableName = name as string;
+    const safe = tableName.replace(/"/g, '""');
+
+    let rows = 0;
+    try {
+      const r = execQuery(`SELECT COUNT(*) FROM "${safe}"`);
+      rows = (r.rows[0]?.[0] as number) ?? 0;
+    } catch { /* view or table with no rowid — leave 0 */ }
+
+    let columns = 0;
+    try {
+      const r = execQuery(`PRAGMA table_info("${safe}")`);
+      columns = r.rows.length;
+    } catch { /* ignore */ }
+
+    let sizeBytes = 0;
+    try {
+      const safeLit = tableName.replace(/'/g, "''");
+      const r = execQuery(
+        `SELECT COALESCE(SUM(payload), 0) FROM dbstat WHERE name = '${safeLit}'`,
+      );
+      sizeBytes = (r.rows[0]?.[0] as number) ?? 0;
+    } catch { /* dbstat not available */ }
+
+    return { name: tableName, type: type as 'table' | 'view', rows, columns, sizeBytes };
+  });
+}
+
 /** Return all user table names in the current database. */
 export function listTables(): string[] {
   if (!db) return [];

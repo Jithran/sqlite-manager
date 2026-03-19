@@ -26,6 +26,7 @@ import {
   saveFile,
   saveAsFile,
   exportAsSql,
+  getTableStats,
   execQuery,
   listTables,
   hasFileHandle,
@@ -60,6 +61,7 @@ const btnSave           = el<HTMLButtonElement>('btn-save');
 const btnSaveAs         = el<HTMLButtonElement>('btn-save-as');
 const btnExportSql      = el<HTMLButtonElement>('btn-export-sql');
 const btnRun            = el<HTMLButtonElement>('btn-run');
+const btnOverview       = el<HTMLButtonElement>('btn-overview');
 const btnRefresh        = el<HTMLButtonElement>('btn-refresh-tables');
 const btnExportCsv      = el<HTMLButtonElement>('btn-export-csv');
 const btnAddRow         = el<HTMLButtonElement>('btn-add-row');
@@ -952,6 +954,106 @@ function handleDroppedSql(name: string, sql: string): void {
   }
 }
 
+// ── Database overview modal ────────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '—';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
+function showOverview(): void {
+  if (!isOpen()) return;
+
+  document.getElementById('overview-modal')?.remove();
+
+  const stats = getTableStats();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'overview-modal';
+  overlay.className = 'modal-overlay';
+
+  const box = document.createElement('div');
+  box.className = 'modal-box';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'modal-header';
+  const title = document.createElement('span');
+  title.className = 'modal-title';
+  title.textContent = 'Database Overview';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'btn-icon modal-close';
+  closeBtn.textContent = '✕';
+  closeBtn.addEventListener('click', () => overlay.remove());
+  header.appendChild(title);
+  header.appendChild(closeBtn);
+
+  // Content
+  const content = document.createElement('div');
+  content.className = 'modal-content';
+
+  if (stats.length === 0) {
+    const empty = document.createElement('p');
+    empty.className = 'history-empty';
+    empty.textContent = 'No tables or views found.';
+    content.appendChild(empty);
+  } else {
+    const table = document.createElement('table');
+    table.className = 'overview-table';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `<tr>
+      <th>Name</th>
+      <th>Type</th>
+      <th class="col-num">Rows</th>
+      <th class="col-num">Columns</th>
+      <th class="col-num">Est. size</th>
+    </tr>`;
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const row of stats) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="overview-name">${row.name}</td>
+        <td><span class="overview-badge overview-badge-${row.type}">${row.type}</span></td>
+        <td class="col-num">${row.rows.toLocaleString()}</td>
+        <td class="col-num">${row.type === 'view' ? '—' : row.columns}</td>
+        <td class="col-num">${formatBytes(row.sizeBytes)}</td>
+      `;
+      if (row.type === 'table') {
+        tr.style.cursor = 'pointer';
+        tr.title = `Load ${row.name}`;
+        tr.addEventListener('click', () => {
+          overlay.remove();
+          // activate sidebar item
+          tableList.querySelectorAll('.table-list-item').forEach((e) =>
+            e.classList.toggle('active', e.textContent === row.name),
+          );
+          loadTable(row.name);
+        });
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    content.appendChild(table);
+  }
+
+  box.appendChild(header);
+  box.appendChild(content);
+  overlay.appendChild(box);
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); }
+  };
+  document.addEventListener('keydown', onKey);
+
+  document.body.appendChild(overlay);
+}
+
 function initDragAndDrop(): void {
   let dragDepth = 0;
 
@@ -1006,6 +1108,7 @@ export async function initApp(): Promise<void> {
 
   initDragAndDrop();
 
+  btnOverview.addEventListener('click', showOverview);
   btnReleases.addEventListener('click', showReleases);
   btnHistory.addEventListener('click', () => showChangeHistory(afterUndo));
   btnNew.addEventListener('click', handleNew);

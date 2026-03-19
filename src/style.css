@@ -739,6 +739,39 @@ body {
   text-overflow: ellipsis;
 }
 
+/* ── Database overview modal ──────────────────────────────── */
+.overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.overview-table th {
+  text-align: left;
+  padding: 7px 14px;
+  border-bottom: 2px solid var(--border);
+  color: var(--text-2);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.overview-table td {
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.overview-table tbody tr:hover td { background: var(--bg-2); }
+.overview-table .col-num { text-align: right; font-family: var(--font-mono); }
+.overview-name { font-family: var(--font-mono); font-weight: 600; }
+.overview-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: var(--radius);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.overview-badge-table { background: var(--accent); color: #fff; opacity: .85; }
+.overview-badge-view  { background: var(--bg-3); color: var(--text-1); }
+
 /* ── Scrollbars ───────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--bg-1); }
