@@ -62,7 +62,7 @@ export function recordDelete(
   values: unknown[],
 ): void {
   const colList = ['"rowid"', ...columns.map((c) => `"${safe(c)}"`)] .join(', ');
-  const placeholders = columns.map(() => '?').fill('?', 0, columns.length + 1).join(', ');
+  const placeholders = Array(columns.length + 1).fill('?').join(', ');
   history.unshift({
     id: nextId++,
     timestamp: new Date(),

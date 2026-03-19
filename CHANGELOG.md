@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Undo delete**: restoring a deleted row no longer fails with "N values for N+1 columns" — the INSERT placeholder count now correctly includes the rowid column.
+
 ---
 
 ## [0.2.0] – Row editing, change history & SQL export – 2026-03-18
