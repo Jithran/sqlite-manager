@@ -7,11 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+## [0.3.0] – Database overview, undo fix & nginx update – 2026-11-26
+
 ### Added
 - **Database overview**: click ⊞ in the sidebar header to open a modal showing all tables and views with their row count, column count, and estimated on-disk size. Clicking a table row loads it directly.
 
 ### Fixed
 - **Undo delete**: restoring a deleted row no longer fails with "N values for N+1 columns" — the INSERT placeholder count now correctly includes the rowid column.
+- Updated the bundled web server (nginx) to 1.30.8, which fixes several security vulnerabilities.
 
 ---
 
