@@ -111,31 +111,36 @@ jobs:
             ${{ env.IMAGE }}:${{ needs.release.outputs.tag_name }}
             ${{ env.IMAGE }}:latest
 
-  # ── 3. Werk manifest bij in terraform-playground ─────────────────
+  # ── 3. Deploy naar Coolify op mars ───────────────────────────────
   deploy:
-    name: Update manifest in terraform-playground
+    name: Deploy naar Coolify
     runs-on: ubuntu-latest
     needs: [release, build]
+    env:
+      COOLIFY_URL:      ${{ secrets.COOLIFY_URL }}
+      COOLIFY_TOKEN:    ${{ secrets.COOLIFY_TOKEN }}
+      COOLIFY_APP_UUID: ${{ secrets.COOLIFY_APP_UUID }}
+      TAG:              ${{ needs.release.outputs.tag_name }}
 
     steps:
-      - name: Checkout terraform-playground
-        uses: actions/checkout@v4
-        with:
-          repository: Jithran/terraform-playground
-          token: ${{ secrets.TERRAFORM_REPO_PAT }}
-          path: terraform-playground
-
-      - name: Pas image-tag aan in deployment manifest
+      - name: Zet image-tag en start deployment
+        id: deploy
         run: |
-          sed -i \
-            "s|image: ghcr.io/jithran/sqlite-manager:.*|image: ghcr.io/jithran/sqlite-manager:${{ needs.release.outputs.tag_name }}|" \
-            terraform-playground/cicd/sqlite-manager/templates/deployment.yaml
+          auth=(-H "Authorization: Bearer $COOLIFY_TOKEN" -H "Content-Type: application/json")
+          curl -fsS -X PATCH "${auth[@]}" "$COOLIFY_URL/api/v1/applications/$COOLIFY_APP_UUID" -d "{\"docker_registry_image_tag\":\"$TAG\"}" > /dev/null
+          uuid=$(curl -fsS -X POST "${auth[@]}" "$COOLIFY_URL/api/v1/deploy?uuid=$COOLIFY_APP_UUID" | jq -r '.deployments[0].deployment_uuid // empty')
+          [[ -n "$uuid" ]] || { echo "Geen deployment gestart"; exit 1; }
+          echo "deployment=$uuid" >> "$GITHUB_OUTPUT"
 
-      - name: Commit en push
-        working-directory: terraform-playground
+      - name: Wacht op resultaat
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add cicd/sqlite-manager/templates/deployment.yaml
-          git commit -m "chore(sqlite-manager): update image naar ${{ needs.release.outputs.tag_name }}"
-          git push
+          for _ in $(seq 1 60); do
+            status=$(curl -fsS -H "Authorization: Bearer $COOLIFY_TOKEN" "$COOLIFY_URL/api/v1/deployments/${{ steps.deploy.outputs.deployment }}" | jq -r '.status')
+            echo "status: $status"
+            case "$status" in
+              finished) exit 0 ;;
+              failed|cancelled*) exit 1 ;;
+            esac
+            sleep 5
+          done
+          echo "Timeout na 5 minuten" && exit 1
